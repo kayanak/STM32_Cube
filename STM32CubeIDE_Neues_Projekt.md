@@ -1,4 +1,4 @@
-# Neues Projekt in STM32CubeIDE erstellen
+# Neues Projekt in STM32CubeIDE erstellen (ohne CubeMX)
 
 ## Voraussetzungen
 
@@ -15,81 +15,74 @@
 - Einen **Workspace** auswählen (Ordner, in dem Projekte gespeichert werden)
 - Mit **Launch** bestätigen
 
-### 2. Neues Projekt anlegen
+### 2. Neues leeres C/C++-Projekt anlegen
 
-- Menü: **File → New → STM32 Project**
-- Es öffnet sich der **Target Selection** Dialog
+- Menü: **File → New → C/C++ Project**
+- Im Dialog **C Managed Build** auswählen und **Next** klicken
 
-### 3. Mikrocontroller auswählen
-
-Es gibt zwei Möglichkeiten:
-
-#### Option A: Nach MCU suchen
-1. Tab **MCU/MPU Selector** wählen
-2. Im Suchfeld oben den Chip-Namen eingeben (z.B. `STM32F103C8`)
-3. Den passenden Controller in der Liste anklicken
-4. **Next** klicken
-
-#### Option B: Nach Board suchen
-1. Tab **Board Selector** wählen
-2. Im Suchfeld den Board-Namen eingeben (z.B. `NUCLEO-F411RE`)
-3. Das Board in der Liste anklicken
-4. **Next** klicken
-
-### 4. Projektname und Einstellungen
+### 3. Projektname und Toolchain
 
 - **Project Name**: Einen Namen eingeben (z.B. `MeinErstesProjekt`)
-- **Targeted Language**: `C` oder `C++` auswählen
-- **Targeted Binary Type**: `Executable` belassen
-- **Targeted Project Type**: `STM32Cube` belassen
-- Mit **Finish** bestätigen
+- **Project type**: **Empty Project** wählen
+- **Toolchain**: **MCU ARM GCC** auswählen
+- **Next** klicken
 
-### 5. Peripherie konfigurieren (CubeMX-Ansicht)
+### 4. Mikrocontroller auswählen
 
-Nach dem Erstellen öffnet sich die **CubeMX-Konfigurationsansicht** (`.ioc`-Datei):
+- Im **MCU Settings**-Dialog den Chip-Namen eingeben (z.B. `STM32F103C8`)
+- Den passenden Controller in der Liste anklicken
+- **Finish** klicken
 
-1. **Pinout & Configuration**: Pins und Peripherie konfigurieren
-   - Links die Peripherie-Kategorien (GPIO, USART, SPI, I2C, Timer, etc.)
-   - Auf dem Chip-Bild Pins anklicken und Funktion zuweisen
-2. **Clock Configuration**: Taktfrequenzen einstellen
-   - HSE/HSI Quelle wählen
-   - PLL konfigurieren
-   - Systemtakt (HCLK) einstellen
-3. **Project Manager**:
-   - Unter **Code Generator** die Option aktivieren:
-     - ✅ *Generate peripheral initialization as a pair of .c/.h files per peripheral*
+### 5. Projektstruktur anlegen
 
-### 6. Code generieren
+Das Projekt enthält zunächst nur einen leeren Ordner. Folgende Dateien manuell anlegen:
 
-- **Strg+S** drücken oder **Project → Generate Code**
-- CubeIDE generiert automatisch den Initialisierungscode
-- Bei der Frage "Do you want to open the C/C++ perspective?" → **Yes**
+#### Ordnerstruktur erstellen
+- Rechtsklick auf Projekt → **New → Source Folder** → Name: `Src`
+- Rechtsklick auf Projekt → **New → Folder** → Name: `Inc`
 
-### 7. Eigenen Code schreiben
+#### Startup-Datei einbinden
+- Die Startup-Datei (`startup_stm32f103xx.s`) und das Linker-Script (`.ld`) werden automatisch bereitgestellt
+- Falls nicht vorhanden: aus dem STM32Cube Firmware-Paket kopieren
 
-- Die Datei `Core/Src/main.c` öffnen
-- Eigenen Code **nur zwischen** die `USER CODE`-Kommentare schreiben:
+#### main.c erstellen
+- Rechtsklick auf `Src` → **New → Source File** → Name: `main.c`
+
+### 6. Code schreiben (Bare-Metal / Register-Ebene)
+
+Beispiel für eine LED-Blink-Anwendung mit direktem Registerzugriff:
 
 ```c
-/* USER CODE BEGIN 2 */
-// Eigener Initialisierungscode hier
-/* USER CODE END 2 */
+#include "stm32f1xx.h"  // Header passend zum MCU anpassen
 
-/* USER CODE BEGIN WHILE */
-while (1)
+int main(void)
 {
-    // Eigener Code in der Hauptschleife hier
-    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-    HAL_Delay(500);
+    // Takt für GPIOA aktivieren (RCC)
+    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
 
-    /* USER CODE END WHILE */
+    // PA5 als Output Push-Pull konfigurieren (max. 2 MHz)
+    GPIOA->CRL &= ~(GPIO_CRL_CNF5 | GPIO_CRL_MODE5);
+    GPIOA->CRL |= GPIO_CRL_MODE5_1;  // Output 2 MHz
 
-    /* USER CODE BEGIN 3 */
+    while (1)
+    {
+        GPIOA->ODR ^= GPIO_ODR_ODR5;  // PA5 toggeln
+
+        // Einfache Verzögerung
+        for (volatile uint32_t i = 0; i < 200000; i++);
+    }
 }
-/* USER CODE END 3 */
 ```
 
-> **Wichtig:** Code außerhalb der `USER CODE`-Blöcke wird bei erneuter Code-Generierung überschrieben!
+> **Hinweis:** Die Header-Datei (z.B. `stm32f1xx.h`, `stm32f4xx.h`) richtet sich nach deiner MCU-Familie. Sie stellt alle Register-Definitionen bereit.
+
+### 7. Include-Pfade konfigurieren
+
+Falls der Compiler die Header nicht findet:
+
+1. Rechtsklick auf Projekt → **Properties**
+2. **C/C++ Build → Settings → MCU GCC Compiler → Include paths**
+3. Pfad zum `Inc`-Ordner und zu den CMSIS-Headern hinzufügen
 
 ### 8. Projekt kompilieren
 
@@ -112,7 +105,7 @@ while (1)
 | Kürzel     | Funktion                    |
 |------------|-----------------------------|
 | Strg+B     | Projekt kompilieren (Build) |
-| Strg+S     | Speichern / Code generieren |
+| Strg+S     | Speichern                   |
 | Strg+F11   | Debug starten               |
 | F8         | Programm fortsetzen         |
 | Strg+F2    | Debug beenden               |
@@ -121,6 +114,7 @@ while (1)
 
 ## Tipps
 
-- **Peripherie nachträglich ändern**: Doppelklick auf die `.ioc`-Datei im Projektbaum
-- **HAL-Dokumentation**: Rechtsklick auf eine HAL-Funktion → **Open Declaration**
-- **Beispielprojekte**: Menü **Help → Manage Embedded Software Packages** → Beispiele für dein Board herunterladen
+- **CMSIS-Header**: Stellen Register-Definitionen bereit (z.B. `RCC->APB2ENR`), ohne HAL-Overhead
+- **Reference Manual**: Das Reference Manual deines STM32 enthält alle Register-Beschreibungen (von st.com herunterladen)
+- **Datasheet**: Enthält die Pin-Belegung und elektrischen Eigenschaften
+- **HAL optional nutzen**: Falls du doch einzelne HAL-Treiber verwenden möchtest, kannst du sie manuell aus dem Firmware-Paket einbinden, ohne CubeMX zu benötigen
